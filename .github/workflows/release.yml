@@ -1,0 +1,65 @@
+name: Release
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  release:
+    name: Run Release Manager
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Load Secrets
+        uses: 1password/load-secrets-action@v1
+        with:
+          export-env: true
+        env:
+          OP_CONNECT_HOST: ${{ secrets.OP_CONNECT_HOST }}
+          OP_CONNECT_TOKEN: ${{ secrets.OP_CONNECT_TOKEN }}
+          GITHUB_APP_ID: op://op-github-devops/cosmic-agent-labs/app-id
+          GITHUB_PRIVATE_KEY: op://op-github-devops/cosmic-agent-labs/private-key
+
+      - name: Create GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ env.GITHUB_APP_ID }}
+          private-key: ${{ env.GITHUB_PRIVATE_KEY }}
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          ref: ${{ github.head_ref }}
+          # Make sure the value of GITHUB_TOKEN will not be persisted in repo's config
+          persist-credentials: false
+          # Pull all previous tags
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Conventional Changelog Action
+        id: conventional-changelog
+        uses: TriPSs/conventional-changelog-action@v5
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          skip-git-pull: true
+          skip-version-file: true
+          git-push: false
+          skip-on-empty: false # Always create commit
+
+      - name: Push Conventional Changelog
+        uses: ad-m/github-push-action@master
+        id: push
+        with:
+          github_token: ${{ steps.app-token.outputs.token }}
+          branch: ${{ github.ref }}
+
+      - name: Create Release
+        uses: ncipollo/release-action@v1
+        with:
+          tag: ${{ steps.conventional-changelog.outputs.tag }}
+          body: ${{ steps.conventional-changelog.outputs.changelog }}
+          token: ${{ steps.app-token.outputs.token }}
+          makeLatest: true
