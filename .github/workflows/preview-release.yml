@@ -1,0 +1,54 @@
+name: Preview Release
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  release-preview:
+    name: Preview Release
+
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          # Make sure the value of GITHUB_TOKEN will not be persisted in repo's config
+          persist-credentials: false
+          # Pull all previous tags
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Conventional Changelog Action
+        id: conventional-changelog
+        uses: TriPSs/conventional-changelog-action@v5
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          skip-git-pull: true
+          skip-version-file: true
+          git-push: false
+          skip-commit: true
+          skip-tag: true
+          output-file: false
+          skip-on-empty: false # Always create commit
+
+      - name: Format Changelog
+        id: format-changelog
+        run: |
+          echo "${{ steps.conventional-changelog.outputs.changelog }}" > step-changes.md
+          {
+            echo 'changelog<<EOF'
+            find . -type f -name 'step-changes.md' -print0 | xargs -0 sed -E 's/(^|[^!])\[(.*?)\]\(.*?\)/\1\2/g'
+            echo EOF
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Add PR Comment
+        uses: mshick/add-pr-comment@v2
+        with:
+          message: ${{ steps.format-changelog.outputs.changelog }}
